@@ -92,7 +92,16 @@
       gap: 8px;
     }
     .site-item .toggle { cursor: pointer; flex-shrink: 0; }
-    .site-item .site-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .site-item .site-name {
+      flex: 1;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+      color: #333;
+    }
+    .site-item .site-name:hover { color: #667eea; text-decoration: underline; }
     .site-status {
       padding: 3px 10px;
       border-radius: 10px;

@@ -70,10 +70,12 @@ async function renderSites(results) {
     toggle.title = enabled ? '点击禁用' : '点击启用';
     toggle.addEventListener('change', () => toggleSite(index, toggle.checked));
 
-    // 站点名
+    // 站点名（点击新页面打开站点）
     const name = document.createElement('span');
     name.className = 'site-name';
     name.textContent = site.name || site.domain;
+    name.title = `新页面打开 https://${site.domain}/`;
+    name.addEventListener('click', () => openSiteInNewTab(site.domain));
 
     // 状态
     const status = document.createElement('span');
@@ -107,6 +109,11 @@ async function renderSites(results) {
     item.appendChild(del);
     sitesList.appendChild(item);
   });
+}
+
+// 新页面打开站点
+function openSiteInNewTab(domain) {
+  chrome.tabs.create({ url: `https://${domain}/`, active: true });
 }
 
 // 更新统计数字
