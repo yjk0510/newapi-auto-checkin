@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStatus();
   renderSites();
   setupEventListeners();
+  loadWebdavSettings();
 });
 
 function setupEventListeners() {
@@ -26,6 +27,19 @@ function setupEventListeners() {
     document.getElementById('importFile').click();
   });
   document.getElementById('importFile').addEventListener('change', handleImport);
+
+  // WebDAV 设置
+  document.getElementById('showWebdavBtn').addEventListener('click', toggleWebdavForm);
+  document.getElementById('webdavSaveBtn').addEventListener('click', handleWebdavSave);
+  document.getElementById('webdavCancelBtn').addEventListener('click', () => {
+    document.getElementById('webdavForm').classList.remove('show');
+  });
+  document.getElementById('webdavTestBtn').addEventListener('click', handleWebdavTest);
+  document.getElementById('webdavUploadBtn').addEventListener('click', handleWebdavUpload);
+  document.getElementById('webdavDownloadBtn').addEventListener('click', handleWebdavDownload);
+  document.getElementById('webdavPeriodicSync').addEventListener('change', (e) => {
+    document.getElementById('webdavSyncInterval').disabled = !e.target.checked;
+  });
 }
 
 // 加载签到状态
@@ -70,10 +84,25 @@ async function renderSites(results) {
     toggle.title = enabled ? '点击禁用' : '点击启用';
     toggle.addEventListener('change', () => toggleSite(index, toggle.checked));
 
-    // 站点名
+    // 站点名（点击跳转）
     const name = document.createElement('span');
     name.className = 'site-name';
     name.textContent = site.name || site.domain;
+    name.title = `点击打开 https://${site.domain}`;
+    name.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.tabs.create({ url: `https://${site.domain}`, active: false });
+    });
+
+    // 跳转图标
+    const link = document.createElement('span');
+    link.className = 'site-link';
+    link.textContent = '↗';
+    link.title = `打开 https://${site.domain}`;
+    link.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.tabs.create({ url: `https://${site.domain}`, active: false });
+    });
 
     // 状态
     const status = document.createElement('span');
@@ -103,6 +132,7 @@ async function renderSites(results) {
 
     item.appendChild(toggle);
     item.appendChild(name);
+    item.appendChild(link);
     item.appendChild(status);
     item.appendChild(del);
     sitesList.appendChild(item);
@@ -138,6 +168,7 @@ async function handleAddSite() {
 
   sites.push({ domain, name: domain, enabled: true });
   await saveSitesConfig(sites);
+  syncToWebdavIfEnabled();
 
   input.value = '';
   document.getElementById('addForm').classList.remove('show');
@@ -150,6 +181,7 @@ async function toggleSite(index, enabled) {
   if (sites[index]) {
     sites[index].enabled = enabled;
     await saveSitesConfig(sites);
+    syncToWebdavIfEnabled();
     renderSites();
   }
 }
@@ -164,6 +196,7 @@ async function removeSite(index) {
 
   sites.splice(index, 1);
   await saveSitesConfig(sites);
+  syncToWebdavIfEnabled();
   renderSites();
 }
 
@@ -283,11 +316,142 @@ async function handleImport(event) {
     }
 
     await saveSitesConfig(finalSites);
+    syncToWebdavIfEnabled();
     renderSites();
   } catch (error) {
     alert('导入失败: ' + error.message);
   } finally {
     // 清空文件选择
     event.target.value = '';
+  }
+}
+
+// ─── WebDAV 同步 ──────────────────────────────────────────────
+
+async function loadWebdavSettings() {
+  const cfg = await loadWebdavConfig();
+  document.getElementById('webdavUrl').value = cfg.url || '';
+  document.getElementById('webdavFilename').value = cfg.filename || WEBDAV_DEFAULTS.filename;
+  document.getElementById('webdavUsername').value = cfg.username || '';
+  document.getElementById('webdavPassword').value = cfg.password || '';
+  document.getElementById('webdavAutoSync').checked = cfg.autoSync || false;
+  document.getElementById('webdavPeriodicSync').checked = cfg.periodicSync || false;
+  document.getElementById('webdavSyncInterval').value = cfg.syncInterval || WEBDAV_DEFAULTS.syncInterval;
+  document.getElementById('webdavSyncInterval').disabled = !cfg.periodicSync;
+}
+
+function toggleWebdavForm() {
+  document.getElementById('webdavForm').classList.toggle('show');
+  document.getElementById('webdavUrl').focus();
+}
+
+async function handleWebdavSave() {
+  const cfg = {
+    enabled: true,
+    url: document.getElementById('webdavUrl').value.trim(),
+    username: document.getElementById('webdavUsername').value.trim(),
+    password: document.getElementById('webdavPassword').value,
+    filename: document.getElementById('webdavFilename').value.trim() || WEBDAV_DEFAULTS.filename,
+    autoSync: document.getElementById('webdavAutoSync').checked,
+    periodicSync: document.getElementById('webdavPeriodicSync').checked,
+    syncInterval: parseInt(document.getElementById('webdavSyncInterval').value) || WEBDAV_DEFAULTS.syncInterval
+  };
+
+  if (!cfg.url) {
+    alert('请输入 WebDAV 服务器地址');
+    return;
+  }
+
+  await saveWebdavConfig(cfg);
+
+  // 通知后台更新定时同步
+  chrome.runtime.sendMessage({
+    action: 'webdavUpdateAlarm',
+    config: cfg
+  });
+
+  document.getElementById('webdavForm').classList.remove('show');
+  setWebdavStatus('设置已保存 ✓', '#28a745');
+}
+
+function setWebdavStatus(msg, color) {
+  const el = document.getElementById('webdavStatus');
+  el.textContent = msg;
+  el.style.color = color || '#666';
+  setTimeout(() => { el.textContent = ''; }, 5000);
+}
+
+async function handleWebdavTest() {
+  const cfg = readWebdavFormConfig();
+  if (!cfg.url) { alert('请先填写服务器地址'); return; }
+
+  setWebdavStatus('测试中...', '#666');
+  const res = await webdavTest(cfg);
+  setWebdavStatus(res.message, res.success ? '#28a745' : '#dc3545');
+}
+
+async function handleWebdavUpload() {
+  const cfg = readWebdavFormConfig();
+  if (!cfg.url) { alert('请先填写服务器地址'); return; }
+
+  setWebdavStatus('上传中...', '#666');
+  const res = await webdavUpload(cfg);
+  setWebdavStatus(res.message, res.success ? '#28a745' : '#dc3545');
+}
+
+async function handleWebdavDownload() {
+  const cfg = readWebdavFormConfig();
+  if (!cfg.url) { alert('请先填写服务器地址'); return; }
+
+  setWebdavStatus('下载中...', '#666');
+  const res = await webdavDownload(cfg);
+
+  if (!res.success) {
+    setWebdavStatus(res.message, '#dc3545');
+    return;
+  }
+
+  const currentSites = await loadRawSites();
+  const remoteSites = res.config.sites;
+  const confirmMsg = `将从 WebDAV 导入 ${remoteSites.length} 个站点\n当前有 ${currentSites.length} 个站点，是否覆盖？\n\n确定=覆盖 取消=合并`;
+
+  const shouldReplace = confirm(confirmMsg);
+
+  let finalSites;
+  if (shouldReplace || currentSites.length === 0) {
+    finalSites = remoteSites;
+  } else {
+    const existingDomains = new Set(currentSites.map(s => s.domain));
+    const newSites = remoteSites.filter(s => !existingDomains.has(s.domain));
+    finalSites = [...currentSites, ...newSites];
+    if (newSites.length === 0) {
+      setWebdavStatus('所有站点已存在，无需导入', '#856404');
+      return;
+    }
+  }
+
+  await saveSitesConfig(finalSites);
+  renderSites();
+  setWebdavStatus(`已导入 ${finalSites.length} 个站点 ✓`, '#28a745');
+}
+
+function readWebdavFormConfig() {
+  return {
+    url: document.getElementById('webdavUrl').value.trim(),
+    username: document.getElementById('webdavUsername').value.trim(),
+    password: document.getElementById('webdavPassword').value,
+    filename: document.getElementById('webdavFilename').value.trim() || WEBDAV_DEFAULTS.filename,
+    autoSync: document.getElementById('webdavAutoSync').checked,
+    periodicSync: document.getElementById('webdavPeriodicSync').checked,
+    syncInterval: parseInt(document.getElementById('webdavSyncInterval').value) || WEBDAV_DEFAULTS.syncInterval
+  };
+}
+
+// 配置变更后的自动同步（静默，不阻塞 UI）
+async function syncToWebdavIfEnabled() {
+  const cfg = await loadWebdavConfig();
+  if (cfg.enabled && cfg.autoSync && cfg.url) {
+    // 交给后台静默同步
+    chrome.runtime.sendMessage({ action: 'webdavSync', config: cfg });
   }
 }

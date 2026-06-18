@@ -16,11 +16,29 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// 启动时检查是否需要恢复 WebDAV 定时同步
+(async function startup() {
+  const data = await chrome.storage.local.get('webdavConfig');
+  if (data.webdavConfig?.enabled && data.webdavConfig?.periodicSync) {
+    const alarm = await chrome.alarms.get('webdavSync');
+    if (!alarm) {
+      chrome.alarms.create('webdavSync', {
+        delayInMinutes: 1,
+        periodInMinutes: data.webdavConfig.syncInterval || 60
+      });
+    }
+  }
+})();
+
 // 监听定时器
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'dailyCheckIn') {
     console.log('开始执行定时签到');
     executeAllCheckIns();
+  }
+  if (alarm.name === 'webdavSync') {
+    console.log('开始 WebDAV 定时同步');
+    executeWebdavSync();
   }
 });
 
@@ -38,6 +56,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getStatus') {
     chrome.storage.local.get(['lastCheckInTime', 'checkInResults'], (data) => {
       sendResponse(data);
+    });
+    return true;
+  }
+
+  if (request.action === 'webdavSync') {
+    executeWebdavSync(request.config).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, message: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'webdavUpdateAlarm') {
+    updateWebdavAlarm(request.config).then(() => {
+      sendResponse({ success: true });
     });
     return true;
   }
@@ -930,4 +964,37 @@ function getNextCheckInTime() {
     next.setDate(next.getDate() + 1);
   }
   return next.getTime();
+}
+
+// ─── WebDAV 同步 ──────────────────────────────────────────────
+
+async function executeWebdavSync(overrideConfig) {
+  const cfg = overrideConfig || (await loadWebdavConfig());
+  if (!cfg.enabled || !cfg.url) {
+    console.log('WebDAV 未配置或未启用，跳过同步');
+    return { success: false, message: 'WebDAV 未配置或未启用' };
+  }
+
+  console.log(`WebDAV 同步: ${cfg.url}`);
+  const result = await webdavUpload(cfg);
+  if (result.success) {
+    await chrome.storage.local.set({ lastWebdavSync: Date.now() });
+  }
+  console.log(`WebDAV 同步结果: ${result.message}`);
+  return result;
+}
+
+async function updateWebdavAlarm(cfg) {
+  // 先清除已有定时器
+  await chrome.alarms.clear('webdavSync');
+
+  if (cfg.enabled && cfg.periodicSync) {
+    chrome.alarms.create('webdavSync', {
+      delayInMinutes: 1,
+      periodInMinutes: cfg.syncInterval || 60
+    });
+    console.log(`WebDAV 定时同步已启用，间隔 ${cfg.syncInterval || 60} 分钟`);
+  } else {
+    console.log('WebDAV 定时同步已关闭');
+  }
 }

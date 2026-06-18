@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "多网站自动签到助手",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "基于 linux.do OAuth2.0 授权的多网站自动签到工具",
   "permissions": [
     "cookies",

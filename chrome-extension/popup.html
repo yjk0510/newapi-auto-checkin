@@ -92,7 +92,10 @@
       gap: 8px;
     }
     .site-item .toggle { cursor: pointer; flex-shrink: 0; }
-    .site-item .site-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .site-item .site-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; color: #333; transition: color 0.15s; }
+    .site-item .site-name:hover { color: #667eea; text-decoration: underline; }
+    .site-item .site-link { flex-shrink: 0; color: #adb5bd; cursor: pointer; font-size: 12px; padding: 2px; transition: color 0.15s; }
+    .site-item .site-link:hover { color: #667eea; }
     .site-status {
       padding: 3px 10px;
       border-radius: 10px;
@@ -206,6 +209,43 @@
       </div>
       <input type="file" id="importFile" accept=".json" style="display: none;">
 
+      <button class="btn btn-sm" style="width: 100%; margin-top: 8px; background: #6f42c1; color: white;" id="showWebdavBtn">
+        <span id="webdavToggleIcon">⚙</span> WebDAV 同步设置
+      </button>
+
+      <div class="add-form" id="webdavForm">
+        <label style="font-size:12px;font-weight:bold;display:block;margin-bottom:4px;">WebDAV 服务器地址</label>
+        <input type="text" id="webdavUrl" placeholder="https://dav.example.com/remote.php/dav/files/user/">
+        <label style="font-size:12px;font-weight:bold;display:block;margin-bottom:4px;">文件名</label>
+        <input type="text" id="webdavFilename" placeholder="checkin-config.json">
+        <label style="font-size:12px;font-weight:bold;display:block;margin-bottom:4px;">用户名</label>
+        <input type="text" id="webdavUsername" placeholder="WebDAV 用户名" autocomplete="off">
+        <label style="font-size:12px;font-weight:bold;display:block;margin-bottom:4px;">密码</label>
+        <input type="password" id="webdavPassword" placeholder="WebDAV 密码" autocomplete="off">
+        <div style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px;">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="webdavAutoSync"> 配置变更时自动同步
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12px;">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="webdavPeriodicSync"> 定时同步
+          </label>
+          <input type="number" id="webdavSyncInterval" value="60" min="5" max="1440" style="width:70px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;" disabled>
+          <span style="color:#666;">分钟</span>
+        </div>
+        <div class="form-actions" style="flex-wrap:wrap;">
+          <button class="btn btn-primary" id="webdavTestBtn" style="flex:1;min-width:80px;font-size:11px;">测试连接</button>
+          <button class="btn" style="flex:1;min-width:80px;font-size:11px;background:#28a745;color:white;" id="webdavUploadBtn">立即上传</button>
+          <button class="btn" style="flex:1;min-width:80px;font-size:11px;background:#17a2b8;color:white;" id="webdavDownloadBtn">下载配置</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" id="webdavSaveBtn" style="flex:1;">保存设置</button>
+          <button class="btn btn-cancel" id="webdavCancelBtn" style="flex:1;">取消</button>
+        </div>
+        <div id="webdavStatus" style="margin-top:8px;font-size:11px;color:#666;min-height:18px;"></div>
+      </div>
+
       <div class="add-form" id="addForm">
         <input type="text" id="newDomain" placeholder="输入域名，如 example.com">
         <div class="form-actions">
@@ -217,7 +257,7 @@
       <div class="last-check" id="lastCheck">暂无签到记录</div>
     </div>
 
-    <div class="footer">v1.0.0</div>
+    <div class="footer">v1.1.0</div>
   </div>
 
   <script src="config.js"></script>
